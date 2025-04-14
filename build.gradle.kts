@@ -9,12 +9,19 @@ version = "2.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
+
 }
+
 
 dependencies {
     implementation("com.google.cloud:google-cloud-vertexai:1.17.0")
     implementation("com.google.cloud:google-cloud-aiplatform:3.32.0")
     implementation("com.google.auth:google-auth-library-oauth2-http:1.21.0")
+    implementation ("com.vladsch.flexmark:flexmark-all:0.64.8")
+    implementation ("com.fifesoft:rsyntaxtextarea:3.3.2")
+    implementation ("de.sciss:jsyntaxpane:1.0.0")
+    implementation("de.sciss:syntaxpane:1.1.1")
+
 }
 
 // Configure Gradle IntelliJ Plugin

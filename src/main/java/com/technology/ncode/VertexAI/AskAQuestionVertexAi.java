@@ -87,4 +87,5 @@ public class AskAQuestionVertexAi {
 
         return sb.toString();
     }
+
 }
