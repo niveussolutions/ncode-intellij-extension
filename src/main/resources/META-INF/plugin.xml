@@ -47,7 +47,7 @@
         <!-- Ask Question -->
         <action id="com.technology.ncode.AskAQuestion.DisplayQuestionToolWindowContent"
             class="com.technology.ncode.AskAQuestion.DisplayQuestionAction"
-            text="Ask Question">
+            text="Explain">
             <add-to-group group-id="com.technology.ncodeGroup" />
             <add-to-group group-id="ToolsMenu" anchor="last" />
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt G" />

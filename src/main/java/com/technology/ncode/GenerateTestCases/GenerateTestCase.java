@@ -36,10 +36,10 @@ public class GenerateTestCase extends AnAction implements DumbAware {
         }
 
         ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
-        ToolWindow toolWindow = toolWindowManager.getToolWindow("ncode-TestCaseGeneration");
+        ToolWindow toolWindow = toolWindowManager.getToolWindow("ncode - TestCaseGeneration");
 
         if (toolWindow == null) {
-            toolWindow = toolWindowManager.registerToolWindow("ncode-TestCaseGeneration", true, ToolWindowAnchor.RIGHT);
+            toolWindow = toolWindowManager.registerToolWindow("ncode - TestCaseGeneration", true, ToolWindowAnchor.RIGHT);
         }
 
         // First-time setup

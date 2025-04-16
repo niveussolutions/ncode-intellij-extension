@@ -35,10 +35,10 @@ public class GenerateDocumentation extends AnAction implements DumbAware {
         }
 
         ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
-        ToolWindow toolWindow = toolWindowManager.getToolWindow("ncode-DocumentGeneration");
+        ToolWindow toolWindow = toolWindowManager.getToolWindow("ncode - DocumentGeneration");
 
         if (toolWindow == null) {
-            toolWindow = toolWindowManager.registerToolWindow("ncode-DocumentGeneration", true, ToolWindowAnchor.RIGHT);
+            toolWindow = toolWindowManager.registerToolWindow("ncode - DocumentGeneration", true, ToolWindowAnchor.RIGHT);
         }
 
         if (content == null) {

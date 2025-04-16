@@ -1,6 +1,7 @@
 package com.technology.ncode.AskAQuestion;
 
 import javax.swing.*;
+import javax.swing.event.CaretListener;
 import javax.swing.text.*;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.HTMLEditorKit;
@@ -38,6 +39,7 @@ import javax.swing.SwingUtilities;
 import java.util.Map;
 import java.util.HashMap;
 
+import static com.ibm.icu.text.PluralRules.Operand.e;
 import static com.intellij.openapi.ui.playback.PlaybackRunner.StatusCallback.Type.message;
 
 public class DisplayQuestionToolWindowContent extends JPanel {
@@ -50,6 +52,7 @@ public class DisplayQuestionToolWindowContent extends JPanel {
     private AskAQuestionVertexAi askAQuestionVertexAi; // Add VertexAI instance
     private final List<UserConversation> conversationHistory = new ArrayList<>();
     private JPanel chatPanel; // Wraps the chat output area
+    private JScrollPane scrollPane;
 
     public DisplayQuestionToolWindowContent() {
         setLayout(new BorderLayout());
@@ -329,25 +332,33 @@ public class DisplayQuestionToolWindowContent extends JPanel {
         });
     }
 
+
     public void setSelectedCode(String code) {
         SwingUtilities.invokeLater(() -> {
-            lastSelectedCode = (code != null) ? code : ""; // Safely assign
+            if (code == null || code.trim().isEmpty()) return;
 
-            chatOutputArea.setText(""); // Clear chat UI
+            // Update only the latest selected code for prompt
+            lastSelectedCode = code;
 
             System.out.println("[Selected Code]");
-            System.out.println(lastSelectedCode.isEmpty() ? "No code selected." : lastSelectedCode);
+            System.out.println(lastSelectedCode);
 
-            if (!lastSelectedCode.isEmpty()) {
-                // Only send automatic message if code is selected
-                sendMessageToAPI("Explain?");
+            // Just show the new question in chat UI (no previous code)
+            StyledDocument doc = chatOutputArea.getStyledDocument();
+            try {
+                doc.insertString(doc.getLength(), "", null);
+            } catch (BadLocationException ex) {
+                ex.printStackTrace();
             }
+
+            // Send the new message using the latest selection only
+            sendMessageToAPI("Explain?");
         });
     }
 
 
-
     private void sendMessageToAPI(String message) {
+        // Prevent input while sending
         askQuestionField.setText("Ask NCode...");
         askQuestionField.setForeground(Color.GRAY);
         askQuestionField.setEnabled(false);
@@ -363,36 +374,65 @@ public class DisplayQuestionToolWindowContent extends JPanel {
         sendButton.setForeground(Color.GRAY);
         askQuestionField.setEnabled(false);
 
+        boolean isAutoExplain = message.equals("Explain?");
+
         executorService.execute(() -> {
             try {
                 System.out.println("[User Query]");
                 System.out.println(message);
 
+                String prompt;
+                if (isAutoExplain) {
+                    prompt = "Please explain the following code:\n\n" + lastSelectedCode;
+                } else {
+                    conversationHistory.add(new UserConversation("user", message));
+                    prompt = buildPrompt();
+                }
 
-                conversationHistory.add(new UserConversation("user", message));
-                String prompt = buildPrompt(); // now no need to pass latest message separately
                 System.out.println("[Prompt Sent to VertexAI]");
                 System.out.println(prompt);
 
                 String response = VertexAIChatbot.getVertexAIResponse(prompt);
+
                 System.out.println("[Response from VertexAI]");
                 System.out.println(response);
 
-                // Add assistant response to history
-                conversationHistory.add(new UserConversation("assistant", response));
+                if (!isAutoExplain) {
+                    conversationHistory.add(new UserConversation("assistant", response));
+                }
 
                 String finalResponse = (response != null && !response.trim().isEmpty())
                         ? response : "⚠ No response received.";
 
                 SwingUtilities.invokeLater(() -> {
-                    removeWaitingMessage();
-                    appendNCodeMessage(finalResponse);
-                    appendSeparatorLine();
+                    try {
+                        // Safely handle scroll position if scrollPane is initialized
+                        int currentScrollValue = 0;
+                        JScrollBar verticalScrollBar = null;
+                        if (scrollPane != null) {
+                            verticalScrollBar = scrollPane.getVerticalScrollBar();
+                            currentScrollValue = verticalScrollBar.getValue();
+                        }
 
-                    sendButton.setEnabled(true);
-                    sendButton.setForeground(Color.WHITE);
-                    askQuestionField.setEnabled(true);
+                        removeWaitingMessage();
+                        appendNCodeMessage(finalResponse);
+                        appendSeparatorLine();
+
+                        // Restore scroll position
+                        if (verticalScrollBar != null) {
+                            verticalScrollBar.setValue(currentScrollValue);
+                        }
+
+                        sendButton.setEnabled(true);
+                        sendButton.setForeground(Color.WHITE);
+                        askQuestionField.setEnabled(true);
+
+                    } catch (Exception e) {
+                        e.printStackTrace(); // log any UI update issues
+                    }
                 });
+
+
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
                     removeWaitingMessage();
@@ -407,6 +447,29 @@ public class DisplayQuestionToolWindowContent extends JPanel {
             }
         });
     }
+
+    // Example init method where scrollPane is created:
+    public JPanel createContent() {
+        chatOutputArea = new JTextPane();
+        chatOutputArea.setEditable(false);
+
+        scrollPane = new JScrollPane(chatOutputArea); // ✅ assign to field
+
+        askQuestionField = new JTextField("Ask NCode...");
+        sendButton = new JButton("Send");
+
+        // setup listeners, layout etc.
+
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
+        return mainPanel;
+
+        //return scrollPane; // or panel containing all components
+    }
+
+
+
+
 
 
     private String buildPrompt() {
@@ -512,8 +575,13 @@ public class DisplayQuestionToolWindowContent extends JPanel {
 
     public void appendNCodeMessage(String text) {
         SwingUtilities.invokeLater(() -> {
-            StyledDocument doc = chatOutputArea.getStyledDocument();
+            JScrollPane scrollPane = (JScrollPane) SwingUtilities.getAncestorOfClass(JScrollPane.class, chatOutputArea);
+            if (scrollPane == null) return;
 
+            JScrollBar verticalScrollBar = scrollPane.getVerticalScrollBar();
+            int currentScrollValue = verticalScrollBar.getValue(); // Lock scroll
+
+            StyledDocument doc = chatOutputArea.getStyledDocument();
             MutableDataSet options = new MutableDataSet();
             Parser parser = Parser.builder(options).build();
             HtmlRenderer renderer = HtmlRenderer.builder(options).build();
@@ -521,9 +589,6 @@ public class DisplayQuestionToolWindowContent extends JPanel {
 
             try {
                 HTMLEditorKit editorKit = (HTMLEditorKit) chatOutputArea.getEditorKit();
-
-                // Insert "NCode: " label before the response
-                //String ncodeLabel = "<b>ncode:</b> ";
                 String ncodeLabel = "<b><span style='font-size:16px;'>ncode:</span></b> ";
                 editorKit.insertHTML((HTMLDocument) doc, doc.getLength(), ncodeLabel, 0, 0, null);
 
@@ -543,13 +608,22 @@ public class DisplayQuestionToolWindowContent extends JPanel {
                         editorKit.insertHTML((HTMLDocument) doc, doc.getLength(), htmlText, 0, 0, null);
                     }
                 }
+
+                // Double-delay scroll lock to counter insertComponent() jump
+                SwingUtilities.invokeLater(() ->
+                        SwingUtilities.invokeLater(() -> verticalScrollBar.setValue(currentScrollValue))
+                );
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
 
-            chatOutputArea.setCaretPosition(doc.getLength());
+            // Prevent caret from jumping to bottom
+            // chatOutputArea.setCaretPosition(doc.getLength());
         });
     }
+
+
 
     class CopyIcon implements Icon {
         private final int width;
@@ -584,30 +658,29 @@ public class DisplayQuestionToolWindowContent extends JPanel {
             return height;
         }
     }
+
+    JLabel waitingLabel; // defined earlier and added to chatOutputArea
+
     private void insertCodeBlock(String code) {
-        // Outer panel for the code block
         JPanel codeBox = new JPanel(new BorderLayout());
         codeBox.setBackground(new Color(40, 40, 40));
         codeBox.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 70), 1, true));
 
-        // Code display pane
         JTextPane codePane = new JTextPane();
         codePane.setEditable(false);
         codePane.setText(code);
         codePane.setBackground(new Color(40, 40, 40));
         codePane.setForeground(Color.WHITE);
         codePane.setFont(new Font("Monospaced", Font.PLAIN, 11));
-        codePane.setMargin(new Insets(2, 4, 2, 2)); // Top, Left, Bottom, Right
+        codePane.setMargin(new Insets(2, 4, 2, 2));
         codePane.setCaretPosition(0);
 
-        // Scrollable wrapper for the code
         JScrollPane codeScrollPane = new JScrollPane(codePane);
         codeScrollPane.setBorder(BorderFactory.createEmptyBorder());
         codeScrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         codeScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
         codeScrollPane.getVerticalScrollBar().setUnitIncrement(16);
 
-        // Smooth scrolling for touchpads
         codeScrollPane.addMouseWheelListener(e -> {
             JScrollBar bar = codeScrollPane.getVerticalScrollBar();
             if (bar.isVisible()) {
@@ -625,7 +698,6 @@ public class DisplayQuestionToolWindowContent extends JPanel {
             }
         });
 
-        // Top bar for the copy button
         JPanel topPanel = new JPanel(new BorderLayout());
         topPanel.setBackground(new Color(40, 40, 40));
 
@@ -641,11 +713,9 @@ public class DisplayQuestionToolWindowContent extends JPanel {
         copyButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         copyButton.setToolTipText("Copy");
 
-        // Copy functionality
         copyButton.addActionListener(e -> {
             StringSelection selection = new StringSelection(codePane.getText());
             Toolkit.getDefaultToolkit().getSystemClipboard().setContents(selection, selection);
-
             copyButton.setText("✔");
             copyButton.setIcon(null);
 
@@ -660,11 +730,9 @@ public class DisplayQuestionToolWindowContent extends JPanel {
         iconPanel.add(copyButton);
         topPanel.add(iconPanel, BorderLayout.EAST);
 
-        // Combine all parts
         codeBox.add(topPanel, BorderLayout.NORTH);
         codeBox.add(codeScrollPane, BorderLayout.CENTER);
 
-        // Insert into the chat output
         StyledDocument chatDoc = chatOutputArea.getStyledDocument();
         try {
             chatDoc.insertString(chatDoc.getLength(), "\n", null);
@@ -673,8 +741,15 @@ public class DisplayQuestionToolWindowContent extends JPanel {
         } catch (BadLocationException e) {
             e.printStackTrace();
         }
-    }
 
+        // Scroll to waiting label instead of bottom
+        if (waitingLabel != null) {
+            SwingUtilities.invokeLater(() -> {
+                Rectangle bounds = waitingLabel.getBounds();
+                chatOutputArea.scrollRectToVisible(new Rectangle(0, bounds.y, 1, bounds.height));
+            });
+        }
+    }
 
 
 }
